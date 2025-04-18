@@ -1,0 +1,6 @@
+pyqt5==5.15.7
+pyautogui==0.9.53
+keyboard==0.13.5
+pynput==1.7.6
+pyperclip==1.8.2
+watchdog==2.2.1
