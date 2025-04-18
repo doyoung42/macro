@@ -1,6 +1,6 @@
 # 마우스 키보드 매크로 프로그램 (Windows)
 
-Windows 환경에서 PyQt6로 개발된 마우스/키보드 자동화 매크로 프로그램입니다.
+Windows 환경에서 PyQt5로 개발된 마우스/키보드 자동화 매크로 프로그램입니다.
 
 ## 설치 방법 (Windows)
 
@@ -22,7 +22,7 @@ python main.py
 conda activate macro-env
 pip install pyinstaller
 
-# 실행 파일 컴파일 (이미 main.spec 파일이 있는 경우)
+# 실행 파일 컴파일
 pyinstaller main.spec --clean
 ```
 
