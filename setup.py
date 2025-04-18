@@ -1,3 +1,4 @@
+# setup.py
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
@@ -26,6 +27,7 @@ setup(
     options={
         'build_exe': {
             'excludes': ['__pycache__'],
+            'optimize': 2,
         }
     }
 )
