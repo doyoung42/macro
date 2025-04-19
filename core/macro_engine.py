@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# core/macro_engine.py
 
 import time
 import threading
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+import json
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QTimer
 from pynput import keyboard
 from utils.logger import app_logger
+from core.actions import MacroAction
 
 class MacroEngine(QObject):
     """
@@ -216,15 +219,15 @@ class MacroEngine(QObject):
             self.keyboard_listener.stop()
             self.keyboard_listener = None
         
-        # 스레드 종료 대기
-        if self.thread and self.thread.is_alive():
+        # 스레드 종료 대기 - 현재 스레드가 아닌 경우에만 join 시도
+        if self.thread and self.thread.is_alive() and self.thread != threading.current_thread():
             app_logger.debug("매크로 스레드 종료 대기")
             self.thread.join(1.0)  # 최대 1초간 대기
-            self.thread = None
+        self.thread = None
         
         self.status_changed.emit("매크로 중지됨")
         self.macro_finished.emit()
-    
+
     def _run_macro(self):
         """
         매크로 실행 스레드 함수
@@ -251,7 +254,7 @@ class MacroEngine(QObject):
                     
                     # 동작 실행
                     try:
-                        app_logger.log_macro_action(f"[{action_index}] {action.name}", f"반복: {loop_counter+1}")
+                        app_logger.info(f"매크로 동작: [{action_index}] {action.name} - 반복: {loop_counter+1}")
                         success = action.execute()
                         if not success:
                             error_msg = f"동작 실패: {action.name}"
@@ -275,10 +278,91 @@ class MacroEngine(QObject):
             if self.running:
                 app_logger.info("매크로 모든 반복 실행 완료")
                 self.status_changed.emit("매크로 실행 완료")
-                self.stop()
+                
+                # 스레드 내에서 stop 호출 시 current_thread 문제 방지
+                self.running = False
+                self.paused = False
+                self.macro_finished.emit()
+                
+                # QTimer를 사용하지 않고 상태만 변경하도록 수정
+                # 메인 윈도우의 on_macro_finished 시그널 핸들러에서 UI 업데이트 처리
         
         except Exception as e:
             error_msg = f"매크로 실행 중 오류 발생: {str(e)}"
             app_logger.error(error_msg, exc_info=True)
             self.status_changed.emit(error_msg)
-            self.stop()
+            self.running = False
+            self.paused = False
+            self.macro_finished.emit()
+
+    def save_to_file(self, file_path):
+        """
+        매크로 동작 리스트를 파일로 저장
+        """
+        try:
+            app_logger.info(f"매크로 동작 리스트 저장: {file_path}")
+            
+            # 모든 동작을 딕셔너리로 변환
+            actions_data = []
+            for action in self.actions:
+                actions_data.append(action.to_dict())
+            
+            # 설정 데이터 준비
+            data = {
+                "version": "1.0",
+                "delay": self.delay,
+                "loop_count": self.loop_count,
+                "stop_key": self.stop_key,
+                "actions": actions_data
+            }
+            
+            # JSON 파일로 저장
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            
+            app_logger.info(f"매크로 저장 완료: {len(actions_data)}개 동작")
+            return True
+        
+        except Exception as e:
+            error_msg = f"매크로 저장 중 오류 발생: {str(e)}"
+            app_logger.error(error_msg, exc_info=True)
+            return False
+    
+    def load_from_file(self, file_path):
+        """
+        파일에서 매크로 동작 리스트 불러오기
+        """
+        try:
+            app_logger.info(f"매크로 동작 리스트 불러오기: {file_path}")
+            
+            # 파일에서 JSON 데이터 불러오기
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # 버전 확인
+            version = data.get("version", "1.0")
+            app_logger.debug(f"매크로 파일 버전: {version}")
+            
+            # 설정 값 불러오기
+            self.delay = data.get("delay", 100)
+            self.loop_count = data.get("loop_count", 1)
+            self.stop_key = data.get("stop_key", "f12")
+            
+            # 동작 목록 초기화
+            self.clear_actions()
+            
+            # 동작 객체 생성 및 추가
+            actions_data = data.get("actions", [])
+            for action_data in actions_data:
+                action = MacroAction.from_dict(action_data)
+                if action:
+                    self.add_action(action)
+            
+            app_logger.info(f"매크로 불러오기 완료: {len(self.actions)}개 동작")
+            return True
+        
+        except Exception as e:
+            error_msg = f"매크로 불러오기 중 오류 발생: {str(e)}"
+            app_logger.error(error_msg, exc_info=True)
+            return False
+    

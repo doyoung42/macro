@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# core/clipboard_manager.py
 
 import os
 import time

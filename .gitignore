@@ -21,7 +21,6 @@ ENV/
 
 # PyInstaller
 *.manifest
-*.spec
 
 # VS Code
 .vscode/
@@ -47,3 +46,7 @@ config.local.json
 temp/
 logs/
 dist/
+
+# marge codes to text
+merge.py
+merged_code.txt

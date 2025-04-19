@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# ui/main_window.py
+
 
 import os
+import json
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QPushButton, QListWidget, QLabel, QMessageBox,
                             QGroupBox, QCheckBox, QSpinBox, QFileDialog, QInputDialog)
@@ -9,7 +12,9 @@ from PyQt5.QtCore import Qt, QTimer, pyqtSlot
 
 from ui.action_editor import ActionEditorDialog
 from core.macro_engine import MacroEngine
-from core.actions import MacroAction, MouseClickAction, MouseMoveAction, KeyboardInputAction, KeyCombinationAction, MouseDragDropAction
+from core.actions import (MacroAction, MouseClickAction, MouseMoveAction, 
+                         KeyboardInputAction, KeyCombinationAction, 
+                         MouseDragDropAction, TextListInputAction)  # TextListInputAction 추가
 from core.clipboard_manager import ClipboardManager
 from core.folder_monitor import FolderMonitor
 from utils.config import Config
@@ -89,6 +94,17 @@ class MainWindow(QMainWindow):
         action_buttons_layout.addWidget(self.move_down_btn)
         
         actions_layout.addLayout(action_buttons_layout)
+
+        # 저장 및 불러오기 버튼 추가
+        save_load_layout = QHBoxLayout()
+        self.save_macro_btn = QPushButton("매크로 저장")
+        self.load_macro_btn = QPushButton("매크로 불러오기")
+        
+        save_load_layout.addWidget(self.save_macro_btn)
+        save_load_layout.addWidget(self.load_macro_btn)
+        
+        actions_layout.addLayout(save_load_layout)
+
         self.actions_group.setLayout(actions_layout)
         self.main_layout.addWidget(self.actions_group)
         
@@ -204,6 +220,10 @@ class MainWindow(QMainWindow):
         self.pause_btn.clicked.connect(self.pause_macro)
         self.stop_btn.clicked.connect(self.stop_macro)
         
+        # 저장 및 불러오기 버튼 연결
+        self.save_macro_btn.clicked.connect(self.save_macro)
+        self.load_macro_btn.clicked.connect(self.load_macro)
+
         # 설정 버튼
         self.set_stop_key_btn.clicked.connect(self.set_stop_key)
         self.select_clipboard_file_btn.clicked.connect(self.select_clipboard_file)
@@ -251,6 +271,13 @@ class MainWindow(QMainWindow):
                 app_logger.log_ui_action("새 동작 추가", f"유형: {action.name}")
                 self.actions_list.addItem(action.to_list_item())
                 self.macro_engine.add_action(action)
+                
+                # 텍스트 리스트 입력인 경우 자동으로 반복 횟수 설정
+                if isinstance(action, TextListInputAction) and not self.infinite_loop_check.isChecked():
+                    items_count = action.get_items_count()
+                    if items_count > 0:
+                        app_logger.info(f"텍스트 리스트 입력 동작 추가: 반복 횟수를 {items_count}로 자동 설정")
+                        self.loop_count_spin.setValue(items_count)
     
     @pyqtSlot()
     def edit_action(self):
@@ -272,6 +299,13 @@ class MainWindow(QMainWindow):
                     self.actions_list.insertItem(current_row, edited_action.to_list_item())
                     self.actions_list.setCurrentRow(current_row)
                     self.macro_engine.replace_action(current_row, edited_action)
+                    
+                    # 텍스트 리스트 입력인 경우 자동으로 반복 횟수 설정 (무한 반복이 설정되지 않은 경우에만)
+                    if isinstance(edited_action, TextListInputAction) and not self.infinite_loop_check.isChecked():
+                        items_count = edited_action.get_items_count()
+                        if items_count > 0:
+                            app_logger.info(f"텍스트 리스트 입력 동작 편집: 반복 횟수를 {items_count}로 자동 설정")
+                            self.loop_count_spin.setValue(items_count)
     
     @pyqtSlot()
     def remove_action(self):
@@ -329,6 +363,101 @@ class MainWindow(QMainWindow):
             self.actions_list.setCurrentRow(current_row + 1)
             self.macro_engine.move_action_down(current_row)
     
+    @pyqtSlot()
+    def save_macro(self):
+        """
+        매크로 동작 리스트 저장
+        """
+        app_logger.log_ui_action("매크로 저장 버튼 클릭")
+        
+        if self.actions_list.count() == 0:
+            app_logger.warning("저장할 매크로 동작이 없음")
+            QMessageBox.warning(self, "경고", "저장할 매크로 동작이 없습니다.")
+            return
+        
+        # 파일 저장 대화상자 표시
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "매크로 저장", "", "매크로 파일 (*.json);;모든 파일 (*.*)"
+        )
+        
+        if not file_path:
+            app_logger.debug("매크로 저장 취소됨")
+            return
+        
+        # 확장자 확인 및 추가
+        if not file_path.lower().endswith('.json'):
+            file_path += '.json'
+        
+        # 매크로 저장
+        if self.macro_engine.save_to_file(file_path):
+            self.config.add_recent_file(file_path)  # 최근 파일 목록에 추가
+            QMessageBox.information(self, "저장 완료", f"매크로가 저장되었습니다.\n{file_path}")
+        else:
+            QMessageBox.critical(self, "저장 실패", "매크로 저장 중 오류가 발생했습니다.")
+
+    @pyqtSlot()
+    def load_macro(self):
+        """
+        매크로 동작 리스트 불러오기
+        """
+        app_logger.log_ui_action("매크로 불러오기 버튼 클릭")
+        
+        # 현재 실행 중인 경우 경고
+        if self.macro_engine.is_running():
+            app_logger.warning("매크로 실행 중에는 불러올 수 없음")
+            QMessageBox.warning(self, "경고", "매크로가 실행 중입니다. 먼저 중지해주세요.")
+            return
+        
+        # 확인 메시지 표시
+        if self.actions_list.count() > 0:
+            reply = QMessageBox.question(
+                self, "매크로 불러오기", 
+                "현재 매크로 동작 목록을 지우고 새로 불러오시겠습니까?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
+                QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.No:
+                app_logger.debug("매크로 불러오기 취소됨")
+                return
+        
+        # 파일 선택 대화상자 표시
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "매크로 불러오기", "", "매크로 파일 (*.json);;모든 파일 (*.*)"
+        )
+        
+        if not file_path:
+            app_logger.debug("매크로 불러오기 취소됨")
+            return
+        
+        # 매크로 불러오기
+        if self.macro_engine.load_from_file(file_path):
+            # UI 업데이트
+            self.actions_list.clear()
+            for action in self.macro_engine.actions:
+                self.actions_list.addItem(action.to_list_item())
+            
+            # 설정 업데이트
+            self.delay_spin.setValue(self.macro_engine.delay)
+            
+            loop_count = self.macro_engine.loop_count
+            if loop_count <= 0:
+                self.infinite_loop_check.setChecked(True)
+                self.loop_count_spin.setEnabled(False)
+            else:
+                self.infinite_loop_check.setChecked(False)
+                self.loop_count_spin.setEnabled(True)
+                self.loop_count_spin.setValue(loop_count)
+            
+            self.stop_key_label.setText(self.macro_engine.stop_key)
+            
+            # 최근 파일 목록에 추가
+            self.config.add_recent_file(file_path)
+            
+            QMessageBox.information(self, "불러오기 완료", f"매크로를 불러왔습니다.\n{file_path}")
+        else:
+            QMessageBox.critical(self, "불러오기 실패", "매크로 불러오기 중 오류가 발생했습니다.")
+
     @pyqtSlot()
     def on_action_selection_changed(self):
         """
