@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# core/folder_monitor.py
 
 import os
 import time

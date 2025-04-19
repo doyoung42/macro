@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# ui/action_editor.py
+
 
 import os
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+from PyQt5.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                             QComboBox, QLineEdit, QPushButton, QSpinBox,
                             QDialogButtonBox, QTabWidget, QWidget, QFileDialog,
                             QListWidget, QListWidgetItem, QGridLayout, QTextEdit,
@@ -58,7 +60,7 @@ class ActionEditorDialog(QDialog):
         
         type_layout.addWidget(self.action_type_combo)
         main_layout.addLayout(type_layout)
-        
+
         # 탭 위젯
         self.tab_widget = QTabWidget()
         
@@ -206,6 +208,10 @@ class ActionEditorDialog(QDialog):
         
         # 이벤트 연결
         self.action_type_combo.currentIndexChanged.connect(self.on_action_type_changed)
+
+        # 추가: 탭 변경 이벤트를 콤보박스와 동기화
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
+
         self.capture_pos_btn.clicked.connect(lambda: self.start_capture_mode("move"))
         self.capture_click_pos_btn.clicked.connect(lambda: self.start_capture_mode("click"))
         self.capture_drag_start_btn.clicked.connect(lambda: self.start_capture_mode("drag_start"))
@@ -226,7 +232,28 @@ class ActionEditorDialog(QDialog):
         동작 유형 변경 시 해당 탭으로 전환
         """
         app_logger.log_ui_action("동작 유형 변경", f"새 유형: {self.action_type_combo.currentText()}")
+        
+        # 연결 끊기 (재귀 호출 방지)
+        self.tab_widget.blockSignals(True)
         self.tab_widget.setCurrentIndex(index)
+        self.tab_widget.blockSignals(False)
+        
+        # 현재 탭이 보이도록 포커스 설정
+        current_tab = self.tab_widget.widget(index)
+        if current_tab:
+            current_tab.setFocus()
+
+    def on_tab_changed(self, index):
+        """
+        탭 변경 시 콤보박스 선택 업데이트
+        """
+        app_logger.log_ui_action("탭 변경", f"새 탭: {self.tab_widget.tabText(index)}")
+        
+        # 연결 끊기 (재귀 호출 방지)
+        self.action_type_combo.blockSignals(True)
+        self.action_type_combo.setCurrentIndex(index)
+        self.action_type_combo.blockSignals(False)
+
     
     def start_capture_mode(self, mode):
         """
@@ -324,15 +351,23 @@ class ActionEditorDialog(QDialog):
         app_logger.debug(f"기존 동작 데이터 로드: {action.name}")
         self.action_name_edit.setText(action.name)
         
+        # 액션 유형에 따라 적절한 탭 선택 및 값 설정
         if isinstance(action, MouseMoveAction):
             app_logger.debug(f"마우스 이동 동작 로드: ({action.x}, {action.y})")
-            self.action_type_combo.setCurrentIndex(0)
+            self.action_type_combo.setCurrentIndex(0)  # 콤보박스 인덱스 먼저 설정
+            QApplication.processEvents()  # UI 업데이트 적용
+            self.tab_widget.setCurrentIndex(0)  # 탭 인덱스 설정
+            
+            # 값 설정
             self.mouse_x_spin.setValue(action.x)
             self.mouse_y_spin.setValue(action.y)
         
         elif isinstance(action, MouseClickAction):
             app_logger.debug(f"마우스 클릭 동작 로드: ({action.x}, {action.y}), 버튼: {action.button}")
             self.action_type_combo.setCurrentIndex(1)
+            QApplication.processEvents()
+            self.tab_widget.setCurrentIndex(1)
+            
             self.click_x_spin.setValue(action.x)
             self.click_y_spin.setValue(action.y)
             self.click_type_combo.setCurrentIndex(action.button)
@@ -340,6 +375,9 @@ class ActionEditorDialog(QDialog):
         elif isinstance(action, MouseDragDropAction):
             app_logger.debug(f"마우스 드래그&드롭 동작 로드: ({action.start_x}, {action.start_y}) -> ({action.end_x}, {action.end_y})")
             self.action_type_combo.setCurrentIndex(2)
+            QApplication.processEvents()
+            self.tab_widget.setCurrentIndex(2)
+            
             self.drag_start_x_spin.setValue(action.start_x)
             self.drag_start_y_spin.setValue(action.start_y)
             self.drag_end_x_spin.setValue(action.end_x)
@@ -348,24 +386,42 @@ class ActionEditorDialog(QDialog):
         elif isinstance(action, KeyboardInputAction):
             app_logger.debug(f"키보드 입력 동작 로드: 텍스트 길이: {len(action.text)}")
             self.action_type_combo.setCurrentIndex(3)
+            QApplication.processEvents()
+            self.tab_widget.setCurrentIndex(3)
+            
             self.keyboard_text.setText(action.text)
         
         elif isinstance(action, KeyCombinationAction):
             app_logger.debug(f"키 조합 동작 로드: {action.key_combination}")
             self.action_type_combo.setCurrentIndex(4)
+            QApplication.processEvents()
+            self.tab_widget.setCurrentIndex(4)
+            
             self.key_combo_text.setText(action.key_combination)
         
         elif isinstance(action, TextListInputAction):
             app_logger.debug(f"텍스트 리스트 동작 로드: {len(action.text_list)}개 항목")
             self.action_type_combo.setCurrentIndex(5)
+            QApplication.processEvents()
+            self.tab_widget.setCurrentIndex(5)
+            
+            # 기존 항목 제거 후 새로 추가
+            self.text_list_widget.clear()
             for text in action.text_list:
                 self.text_list_widget.addItem(text)
-    
+
     def get_action(self):
         """
         현재 설정된 동작 객체 반환
         """
         action_type = self.action_type_combo.currentIndex()
+        tab_index = self.tab_widget.currentIndex()
+
+        # 인덱스가 다르면 경고 로그 출력
+        if action_type != tab_index:
+            app_logger.warning(f"동작 유형과 탭 인덱스 불일치: 동작 유형={action_type}, 탭 인덱스={tab_index}")
+        # 콤보박스 인덱스를 기준으로 사용
+        
         name = self.action_name_edit.text()
         
         if not name:
