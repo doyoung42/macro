@@ -84,12 +84,14 @@ class MainWindow(QMainWindow):
         self.add_action_btn = QPushButton("동작 추가")
         self.edit_action_btn = QPushButton("동작 편집")
         self.remove_action_btn = QPushButton("동작 삭제")
+        self.copy_action_btn = QPushButton("동작 복사")
         self.move_up_btn = QPushButton("위로")
         self.move_down_btn = QPushButton("아래로")
         
         action_buttons_layout.addWidget(self.add_action_btn)
         action_buttons_layout.addWidget(self.edit_action_btn)
         action_buttons_layout.addWidget(self.remove_action_btn)
+        action_buttons_layout.addWidget(self.copy_action_btn)
         action_buttons_layout.addWidget(self.move_up_btn)
         action_buttons_layout.addWidget(self.move_down_btn)
         
@@ -124,13 +126,13 @@ class MainWindow(QMainWindow):
         self.infinite_loop_check = QCheckBox("무한 반복")
         loop_layout.addWidget(self.infinite_loop_check)
         
-        # 지연 설정
-        loop_layout.addWidget(QLabel("동작 간 지연(ms):"))
-        self.delay_spin = QSpinBox()
-        self.delay_spin.setMinimum(0)
-        self.delay_spin.setMaximum(10000)
-        self.delay_spin.setValue(100)
-        loop_layout.addWidget(self.delay_spin)
+        # 지연 설정 (메인에서 삭제)
+        # loop_layout.addWidget(QLabel("동작 간 지연(ms):"))
+        # self.delay_spin = QSpinBox()
+        # self.delay_spin.setMinimum(0)
+        # self.delay_spin.setMaximum(10000)
+        # self.delay_spin.setValue(100)
+        # loop_layout.addWidget(self.delay_spin)
         
         execution_layout.addLayout(loop_layout)
         
@@ -144,32 +146,6 @@ class MainWindow(QMainWindow):
         stop_key_layout.addStretch()
         
         execution_layout.addLayout(stop_key_layout)
-        
-        # 클립보드 관리 설정
-        clipboard_layout = QHBoxLayout()
-        self.save_clipboard_check = QCheckBox("클립보드 내용 저장")
-        clipboard_layout.addWidget(self.save_clipboard_check)
-        
-        self.clipboard_file_path = QLabel("파일 미선택")
-        clipboard_layout.addWidget(self.clipboard_file_path)
-        
-        self.select_clipboard_file_btn = QPushButton("파일 선택")
-        clipboard_layout.addWidget(self.select_clipboard_file_btn)
-        
-        execution_layout.addLayout(clipboard_layout)
-        
-        # 폴더 모니터링 설정
-        folder_layout = QHBoxLayout()
-        self.monitor_folder_check = QCheckBox("폴더 모니터링")
-        folder_layout.addWidget(self.monitor_folder_check)
-        
-        self.monitored_folder_path = QLabel("폴더 미선택")
-        folder_layout.addWidget(self.monitored_folder_path)
-        
-        self.select_folder_btn = QPushButton("폴더 선택")
-        folder_layout.addWidget(self.select_folder_btn)
-        
-        execution_layout.addLayout(folder_layout)
         
         self.execution_group.setLayout(execution_layout)
         self.main_layout.addWidget(self.execution_group)
@@ -198,6 +174,7 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(False)
         self.edit_action_btn.setEnabled(False)
         self.remove_action_btn.setEnabled(False)
+        self.copy_action_btn.setEnabled(False)
         self.move_up_btn.setEnabled(False)
         self.move_down_btn.setEnabled(False)
     
@@ -209,6 +186,7 @@ class MainWindow(QMainWindow):
         self.add_action_btn.clicked.connect(self.add_action)
         self.edit_action_btn.clicked.connect(self.edit_action)
         self.remove_action_btn.clicked.connect(self.remove_action)
+        self.copy_action_btn.clicked.connect(self.copy_action)
         self.move_up_btn.clicked.connect(self.move_action_up)
         self.move_down_btn.clicked.connect(self.move_action_down)
         
@@ -226,14 +204,10 @@ class MainWindow(QMainWindow):
 
         # 설정 버튼
         self.set_stop_key_btn.clicked.connect(self.set_stop_key)
-        self.select_clipboard_file_btn.clicked.connect(self.select_clipboard_file)
-        self.select_folder_btn.clicked.connect(self.select_monitored_folder)
-        
+
         # 체크박스
         self.infinite_loop_check.stateChanged.connect(self.on_infinite_loop_changed)
-        self.save_clipboard_check.stateChanged.connect(self.on_save_clipboard_changed)
-        self.monitor_folder_check.stateChanged.connect(self.on_monitor_folder_changed)
-        
+
         # 매크로 엔진 시그널
         self.macro_engine.status_changed.connect(self.on_macro_status_changed)
         self.macro_engine.macro_finished.connect(self.on_macro_finished)
@@ -472,6 +446,7 @@ class MainWindow(QMainWindow):
         
         self.edit_action_btn.setEnabled(has_selection)
         self.remove_action_btn.setEnabled(has_selection)
+        self.copy_action_btn.setEnabled(has_selection)
         self.move_up_btn.setEnabled(has_selection and current_row > 0)
         self.move_down_btn.setEnabled(has_selection and current_row < self.actions_list.count() - 1)
     
@@ -488,8 +463,10 @@ class MainWindow(QMainWindow):
             return
         
         # 매크로 설정
-        self.macro_engine.set_delay(self.delay_spin.value())
-        app_logger.info(f"매크로 지연 시간 설정: {self.delay_spin.value()}ms")
+        # self.macro_engine.set_delay(self.delay_spin.value())
+        # app_logger.info(f"매크로 지연 시간 설정: {self.delay_spin.value()}ms")
+
+        self.macro_engine.set_delay(100) # 기본 지연값 100ms로 설정
         
         if self.infinite_loop_check.isChecked():
             app_logger.info("매크로 무한 반복 설정")
@@ -498,32 +475,6 @@ class MainWindow(QMainWindow):
             loop_count = self.loop_count_spin.value()
             app_logger.info(f"매크로 반복 횟수 설정: {loop_count}")
             self.macro_engine.set_loop_count(loop_count)
-        
-        # 클립보드 관리 설정
-        if self.save_clipboard_check.isChecked():
-            clipboard_file = self.clipboard_file_path.text()
-            app_logger.info(f"클립보드 저장 활성화: {clipboard_file}")
-            
-            if os.path.exists(os.path.dirname(clipboard_file)) and clipboard_file != "파일 미선택":
-                self.clipboard_manager.set_output_file(clipboard_file)
-                self.clipboard_manager.start_monitoring()
-            else:
-                app_logger.warning("클립보드 저장 파일 경로 유효하지 않음")
-                QMessageBox.warning(self, "경고", "클립보드 저장 파일을 선택해주세요.")
-                return
-        
-        # 폴더 모니터링 설정
-        if self.monitor_folder_check.isChecked():
-            folder_path = self.monitored_folder_path.text()
-            app_logger.info(f"폴더 모니터링 활성화: {folder_path}")
-            
-            if os.path.exists(folder_path) and folder_path != "폴더 미선택":
-                self.folder_monitor.set_folder_path(folder_path)
-                self.folder_monitor.start_monitoring()
-            else:
-                app_logger.warning("모니터링할 폴더 경로 유효하지 않음")
-                QMessageBox.warning(self, "경고", "모니터링할 폴더를 선택해주세요.")
-                return
         
         # UI 상태 변경
         self.start_btn.setEnabled(False)
@@ -565,15 +516,6 @@ class MainWindow(QMainWindow):
         
         self.macro_engine.stop()
         
-        # 클립보드/폴더 모니터링 중지
-        if self.clipboard_manager.is_monitoring():
-            app_logger.log_clipboard_action("모니터링 중지", "매크로 중지로 인한 종료")
-            self.clipboard_manager.stop_monitoring()
-        
-        if self.folder_monitor.is_monitoring():
-            app_logger.log_folder_action("모니터링 중지", "매크로 중지로 인한 종료")
-            self.folder_monitor.stop_monitoring()
-        
         # UI 상태 복원
         self.start_btn.setEnabled(True)
         self.pause_btn.setEnabled(False)
@@ -597,30 +539,6 @@ class MainWindow(QMainWindow):
             self.stop_key_label.setText(key)
             self.macro_engine.set_stop_key(key)
     
-    @pyqtSlot()
-    def select_clipboard_file(self):
-        """
-        클립보드 내용을 저장할 파일 선택
-        """
-        app_logger.log_ui_action("클립보드 저장 파일 선택 버튼 클릭")
-        
-        file_path, _ = QFileDialog.getSaveFileName(self, "클립보드 저장 파일 선택", "", "텍스트 파일 (*.txt);;모든 파일 (*.*)")
-        if file_path:
-            app_logger.log_clipboard_action("파일 선택", f"경로: {file_path}")
-            self.clipboard_file_path.setText(file_path)
-    
-    @pyqtSlot()
-    def select_monitored_folder(self):
-        """
-        모니터링할 폴더 선택
-        """
-        app_logger.log_ui_action("모니터링 폴더 선택 버튼 클릭")
-        
-        folder_path = QFileDialog.getExistingDirectory(self, "모니터링할 폴더 선택")
-        if folder_path:
-            app_logger.log_folder_action("폴더 선택", f"경로: {folder_path}")
-            self.monitored_folder_path.setText(folder_path)
-    
     @pyqtSlot(int)
     def on_infinite_loop_changed(self, state):
         """
@@ -629,26 +547,6 @@ class MainWindow(QMainWindow):
         is_checked = bool(state)
         app_logger.log_ui_action("무한 반복 설정 변경", f"상태: {is_checked}")
         self.loop_count_spin.setEnabled(not is_checked)
-    
-    @pyqtSlot(int)
-    def on_save_clipboard_changed(self, state):
-        """
-        클립보드 저장 체크박스 변경 시 핸들러
-        """
-        is_enabled = bool(state)
-        app_logger.log_ui_action("클립보드 저장 설정 변경", f"상태: {is_enabled}")
-        self.clipboard_file_path.setEnabled(is_enabled)
-        self.select_clipboard_file_btn.setEnabled(is_enabled)
-    
-    @pyqtSlot(int)
-    def on_monitor_folder_changed(self, state):
-        """
-        폴더 모니터링 체크박스 변경 시 핸들러
-        """
-        is_enabled = bool(state)
-        app_logger.log_ui_action("폴더 모니터링 설정 변경", f"상태: {is_enabled}")
-        self.monitored_folder_path.setEnabled(is_enabled)
-        self.select_folder_btn.setEnabled(is_enabled)
     
     def closeEvent(self, event):
         """
@@ -677,3 +575,23 @@ class MainWindow(QMainWindow):
         
         app_logger.info("=== 애플리케이션 종료 ===")
         event.accept()
+
+    @pyqtSlot()
+    def copy_action(self):
+        """
+        선택된 매크로 동작 복사
+        """
+        current_row = self.actions_list.currentRow()
+        app_logger.log_ui_action("동작 복사 버튼 클릭", f"선택된 항목: {current_row}")
+        
+        if current_row >= 0:
+            current_action = self.macro_engine.get_action(current_row)
+            
+            # 현재 동작 정보를 딕셔너리로 변환 후 다시 객체로 변환하여 복사
+            action_dict = current_action.to_dict()
+            action_dict["name"] = f"{current_action.name} (복사본)"
+            copied_action = MacroAction.from_dict(action_dict)
+            
+            if copied_action:
+                app_logger.log_ui_action("동작 복사 완료", f"유형: {copied_action.name}")
+                self.actions_list.addItem(copied_action.to_list_item())
