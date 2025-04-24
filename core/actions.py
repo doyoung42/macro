@@ -94,6 +94,23 @@ class MacroAction(QObject):
                 name=data.get("name", "텍스트 리스트 입력"),
                 text_list=data.get("text_list", [])
             )
+        elif action_type == "DelayAction":
+            return DelayAction(
+                name=data.get("name", "지연 시간"),
+                delay=data.get("delay", 1000)
+            )
+        elif action_type == "ClipboardSaveAction":
+            return ClipboardSaveAction(
+                name=data.get("name", "클립보드 저장"),
+                output_file=data.get("output_file", "")
+            )
+        elif action_type == "FolderMonitorAction":
+            action = FolderMonitorAction(
+                name=data.get("name", "폴더 모니터링"),
+                folder_path=data.get("folder_path", "")
+            )
+            action.filename_template = data.get("filename_template", "clipboard.txt")
+            return action
         else:
             app_logger.warning(f"알 수 없는 동작 유형: {action_type}")
             return None
@@ -136,7 +153,6 @@ class MouseMoveAction(MacroAction):
             "y": self.y
         })
         return data
-
 
 
 class MouseClickAction(MacroAction):
@@ -198,7 +214,6 @@ class MouseClickAction(MacroAction):
             "button": self.button
         })
         return data
-
 
 
 class MouseDragDropAction(MacroAction):
@@ -302,15 +317,35 @@ class KeyCombinationAction(MacroAction):
         try:
             import pyautogui
             keys = self.key_combination.split('+')
-            keys = [key.strip() for key in keys]
+            keys = [key.strip().lower() for key in keys]  # 모든 키를 소문자로 변환
             
             app_logger.debug(f"키 조합 입력: {self.key_combination}")
-            pyautogui.hotkey(*keys)
+            
+            # Ctrl+C 처리 - 클립보드 클리어 필요
+            if len(keys) == 2 and keys[0] in ['ctrl', 'control'] and keys[1] == 'c':
+                app_logger.debug("복사(Ctrl+C) 동작 감지 - 클립보드 클리어 후 동작 실행")
+                try:
+                    import pyperclip
+                    # 클립보드 비우기
+                    pyperclip.copy('')
+                    app_logger.debug("클립보드 내용 클리어 완료")
+                except Exception as e:
+                    app_logger.error(f"클립보드 클리어 실패: {str(e)}", exc_info=True)
+                    
+                # 키 조합 실행
+                pyautogui.hotkey(*keys)
+                
+            # Ctrl+V 또는 기타 키 조합 처리 - 클립보드 유지
+            else:
+                # 키 조합 실행
+                pyautogui.hotkey(*keys)
+            
             return True
+        
         except Exception as e:
             app_logger.error(f"키 조합 입력 실패: {str(e)}", exc_info=True)
             return False
-    
+        
     def get_description(self):
         """
         동작 설명 반환
@@ -339,42 +374,25 @@ class TextListInputAction(MacroAction):
     
     def execute(self):
         """
-        현재 텍스트 리스트에서 다음 항목 입력
+        키 조합 입력 실행
         """
-        if not self.text_list:
-            app_logger.warning("텍스트 리스트가 비어 있음")
-            return False
-        
         try:
-            # 현재 인덱스에 해당하는 텍스트 입력
             import pyautogui
-            text = self.text_list[self.current_index]
-            preview = text[:20] + "..." if len(text) > 20 else text
+            keys = self.key_combination.split('+')
+            keys = [key.strip().lower() for key in keys]  # 소문자로 변환하여 처리
             
-            app_logger.debug(f"텍스트 리스트 입력: [{self.current_index+1}/{len(self.text_list)}] {preview}")
+            app_logger.debug(f"키 조합 입력: {self.key_combination}")
             
-            # 한글/영어 입력 문제 해결
-            # 클립보드를 활용한 입력 방식으로 변경
-            import pyperclip
-            
-            # 원래 클립보드 내용 백업
-            original_clipboard = pyperclip.paste()
-            
-            # 텍스트를 클립보드에 복사
-            pyperclip.copy(text)
-            
-            # Ctrl+V로 붙여넣기 (키보드 입력 대신)
-            pyautogui.hotkey('ctrl', 'v')
-            
-            # 원래 클립보드 내용 복원
-            pyperclip.copy(original_clipboard)
-            
-            # 다음 텍스트 항목으로 인덱스 이동 (순환)
-            self.current_index = (self.current_index + 1) % len(self.text_list)
+            # Ctrl+V 처리를 위한 특별 로직
+            if len(keys) == 2 and keys[0] in ['ctrl', 'control'] and keys[1] == 'v':
+                app_logger.debug("클립보드 붙여넣기 기능 사용")
+                pyautogui.hotkey('ctrl', 'v')
+            else:
+                pyautogui.hotkey(*keys)
             
             return True
         except Exception as e:
-            app_logger.error(f"텍스트 리스트 입력 실패: {str(e)}", exc_info=True)
+            app_logger.error(f"키 조합 입력 실패: {str(e)}", exc_info=True)
             return False
     
     def reset(self):
@@ -414,5 +432,133 @@ class TextListInputAction(MacroAction):
         data = super().to_dict()
         data.update({
             "text_list": self.text_list
+        })
+        return data
+
+class DelayAction(MacroAction):
+    """
+    지연 시간 동작
+    """
+    def __init__(self, delay=1000, name="지연"):
+        super().__init__(name)
+        self.delay = delay  # ms
+    
+    def execute(self):
+        """
+        지연 시간 실행
+        """
+        try:
+            delay_sec = self.delay / 1000.0
+            app_logger.debug(f"지연 시간 실행: {self.delay}ms ({delay_sec:.2f}초)")
+            time.sleep(delay_sec)
+            return True
+        except Exception as e:
+            app_logger.error(f"지연 시간 실행 실패: {str(e)}", exc_info=True)
+            return False
+    
+    def get_description(self):
+        """
+        동작 설명 반환
+        """
+        return f"지연 시간: {self.delay}ms"
+    
+    def to_dict(self):
+        """
+        동작을 딕셔너리로 변환
+        """
+        data = super().to_dict()
+        data.update({
+            "delay": self.delay
+        })
+        return data
+    
+class ClipboardSaveAction(MacroAction):
+    """
+    클립보드 내용 저장 동작
+    """
+    def __init__(self, output_file="", name="클립보드 저장"):
+        super().__init__(name)
+        self.output_file = output_file
+        self.clipboard_manager = None
+    
+    def execute(self):
+        """
+        클립보드 저장 시작
+        """
+        try:
+            from core.clipboard_manager import ClipboardManager
+            
+            app_logger.debug(f"클립보드 저장 시작: {self.output_file}")
+            
+            # 클립보드 매니저 초기화 및 시작
+            self.clipboard_manager = ClipboardManager()
+            self.clipboard_manager.set_output_file(self.output_file)
+            self.clipboard_manager.start_monitoring()
+            
+            return True
+        except Exception as e:
+            app_logger.error(f"클립보드 저장 실패: {str(e)}", exc_info=True)
+            return False
+    
+    def get_description(self):
+        """
+        동작 설명 반환
+        """
+        return f"클립보드 저장: {self.output_file}"
+    
+    def to_dict(self):
+        """
+        동작을 딕셔너리로 변환
+        """
+        data = super().to_dict()
+        data.update({
+            "output_file": self.output_file
+        })
+        return data
+
+class FolderMonitorAction(MacroAction):
+    """
+    폴더 모니터링 동작
+    """
+    def __init__(self, folder_path="", name="폴더 모니터링"):
+        super().__init__(name)
+        self.folder_path = folder_path
+        self.folder_monitor = None
+        self.filename_template = "clipboard.txt"  # 기본 파일명
+    
+    def execute(self):
+        """
+        폴더 모니터링 시작
+        """
+        try:
+            from core.folder_monitor import FolderMonitor
+            
+            app_logger.debug(f"폴더 모니터링 시작: {self.folder_path}, 파일명: {self.filename_template}")
+            
+            # 폴더 모니터 초기화 및 시작
+            self.folder_monitor = FolderMonitor()
+            self.folder_monitor.set_folder_path(self.folder_path)
+            self.folder_monitor.set_filename_template(self.filename_template)
+            self.folder_monitor.start_monitoring()
+            
+            return True
+        except Exception as e:
+            app_logger.error(f"폴더 모니터링 실패: {str(e)}", exc_info=True)
+            return False
+    
+    def get_description(self):
+        """
+        동작 설명 반환
+        """
+        return f"폴더 모니터링: {self.folder_path} (파일명: {self.filename_template})"
+    
+    def to_dict(self):
+        """
+        동작을 딕셔너리로 변환
+        """
+        data = super().to_dict()
+        data.update({
+            "folder_path": self.folder_path,
+            "filename_template": self.filename_template
         })
         return data

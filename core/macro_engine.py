@@ -239,7 +239,27 @@ class MacroEngine(QObject):
             
             app_logger.info(f"매크로 실행 시작: {'무한 반복' if infinite_loop else f'{self.loop_count}회 반복'}")
             
+            # 폴더 모니터링 객체 찾기
+            folder_monitor_actions = [action for action in self.actions 
+                                    if isinstance(action, FolderMonitorAction)]
+            
             while self.running and (infinite_loop or loop_counter < self.loop_count):
+                # 각 반복 시작 시 새 폴더 체크
+                for action in folder_monitor_actions:
+                    if hasattr(action, 'folder_monitor') and action.folder_monitor:
+                        # 새 폴더 확인
+                        new_folders = action.folder_monitor.check_new_folders()
+                        
+                        if new_folders:
+                            # 새 폴더가 있으면 각각 처리
+                            for folder in new_folders:
+                                action.folder_monitor.handle_new_folder(folder)
+                                # 처리된 폴더를 초기 목록에 추가하여 다시 처리하지 않게 함
+                                action.folder_monitor.initial_folders.append(folder)
+                        else:
+                            # 새 폴더가 없으면 부모 폴더에 저장
+                            action.folder_monitor.save_to_parent_folder()
+                
                 # 각 동작 실행
                 action_index = 0
                 for action in self.actions:
@@ -283,10 +303,7 @@ class MacroEngine(QObject):
                 self.running = False
                 self.paused = False
                 self.macro_finished.emit()
-                
-                # QTimer를 사용하지 않고 상태만 변경하도록 수정
-                # 메인 윈도우의 on_macro_finished 시그널 핸들러에서 UI 업데이트 처리
-        
+            
         except Exception as e:
             error_msg = f"매크로 실행 중 오류 발생: {str(e)}"
             app_logger.error(error_msg, exc_info=True)

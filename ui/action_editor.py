@@ -14,7 +14,8 @@ from PyQt5.QtGui import QCursor
 
 from core.actions import (MacroAction, MouseClickAction, MouseMoveAction, 
                         KeyboardInputAction, KeyCombinationAction, 
-                        MouseDragDropAction, TextListInputAction)
+                        MouseDragDropAction, TextListInputAction, DelayAction,
+                        ClipboardSaveAction, FolderMonitorAction)
 from utils.logger import app_logger
 
 class ActionEditorDialog(QDialog):
@@ -54,15 +55,18 @@ class ActionEditorDialog(QDialog):
             "마우스 클릭",
             "마우스 드래그 & 드롭",
             "키보드 입력",
-            "키 조합 입력",
-            "텍스트 리스트 입력"
+            "키 조합",
+            "텍스트 리스트 입력",
+            "지연 시간",
+            "클립보드 저장",
+            "폴더 모니터링"
         ])
         
         type_layout.addWidget(self.action_type_combo)
         main_layout.addLayout(type_layout)
 
         # 탭 위젯
-        self.tab_widget = QTabWidget()
+        self.tab_widget = QTabWidget()    
         
         # 1. 마우스 이동 탭
         self.mouse_move_tab = QWidget()
@@ -163,6 +167,17 @@ class ActionEditorDialog(QDialog):
         key_combo_layout.addWidget(QLabel("여러 키를 동시에 입력하려면 '+' 기호로 구분하세요."))
         key_combo_layout.addStretch()
         
+        # 5-1. 자주 사용하는 키 조합 추가
+        common_combo_layout = QHBoxLayout()
+        common_combo_layout.addWidget(QLabel("자주 사용하는 키 조합:"))
+        self.common_combo = QComboBox()
+        self.common_combo.addItems(["선택하세요", "ctrl+c (복사)", "ctrl+v (붙여넣기)", "ctrl+a (전체선택)", "alt+tab (창전환)"])
+        self.common_combo.currentIndexChanged.connect(self.on_common_combo_changed)
+        common_combo_layout.addWidget(self.common_combo)
+        
+        key_combo_layout.addLayout(common_combo_layout)
+        key_combo_layout.addStretch()
+
         # 6. 텍스트 리스트 입력 탭
         self.text_list_tab = QWidget()
         text_list_layout = QVBoxLayout(self.text_list_tab)
@@ -181,17 +196,64 @@ class ActionEditorDialog(QDialog):
         text_list_buttons.addWidget(self.load_from_file_btn)
         
         text_list_layout.addLayout(text_list_buttons)
+
+        # 7. 지연 동작 탭
+        self.delay_tab = QWidget()
+        delay_layout = QVBoxLayout(self.delay_tab)
+
+        delay_layout.addWidget(QLabel("지연 시간 (밀리초):"))
+        self.delay_spin = QSpinBox()
+        self.delay_spin.setRange(100, 60000)  # 100ms ~ 60초
+        self.delay_spin.setValue(1000)  # 기본값 1초
+        self.delay_spin.setSingleStep(100)
+        delay_layout.addWidget(self.delay_spin)
+        delay_layout.addStretch()
         
-        # 탭 위젯에 탭 추가
+        # 8. 클립보드 저장 탭
+        self.clipboard_tab = QWidget()
+        clipboard_layout = QVBoxLayout(self.clipboard_tab)
+
+        clipboard_layout.addWidget(QLabel("저장할 파일 경로:"))
+        self.clipboard_file_edit = QLineEdit()
+        clipboard_layout.addWidget(self.clipboard_file_edit)
+
+        clipboard_browse_btn = QPushButton("파일 선택...")
+        clipboard_browse_btn.clicked.connect(self.browse_clipboard_file)
+        clipboard_layout.addWidget(clipboard_browse_btn)
+        clipboard_layout.addStretch()
+        
+        # 9. 폴더 모니터링 탭
+        self.folder_tab = QWidget()
+        folder_layout = QVBoxLayout(self.folder_tab)
+
+        folder_layout.addWidget(QLabel("모니터링할 폴더 경로:"))
+        self.folder_path_edit = QLineEdit()
+        folder_layout.addWidget(self.folder_path_edit)
+
+        folder_browse_btn = QPushButton("폴더 선택...")
+        folder_browse_btn.clicked.connect(self.browse_folder_path)
+        folder_layout.addWidget(folder_browse_btn)
+
+        folder_layout.addWidget(QLabel("저장 파일명 (기본값: clipboard.txt):"))
+        self.folder_filename_edit = QLineEdit("clipboard.txt")
+        folder_layout.addWidget(self.folder_filename_edit)
+
+        folder_layout.addWidget(QLabel("새 폴더가 없을 경우, clipboard_YYYYMMDD_HHMMSS.txt로 저장됩니다."))
+        folder_layout.addStretch()
+
+        # 탭 위젯 이름 설정    
         self.tab_widget.addTab(self.mouse_move_tab, "마우스 이동")
         self.tab_widget.addTab(self.mouse_click_tab, "마우스 클릭")
         self.tab_widget.addTab(self.drag_drop_tab, "드래그 & 드롭")
         self.tab_widget.addTab(self.keyboard_tab, "키보드 입력")
         self.tab_widget.addTab(self.key_combo_tab, "키 조합")
         self.tab_widget.addTab(self.text_list_tab, "텍스트 리스트")
-        
+        self.tab_widget.addTab(self.delay_tab, "지연 시간")
+        self.tab_widget.addTab(self.clipboard_tab, "클립보드 저장")
+        self.tab_widget.addTab(self.folder_tab, "폴더 모니터링")
+
         main_layout.addWidget(self.tab_widget)
-        
+
         # 동작 이름
         name_layout = QHBoxLayout()
         name_layout.addWidget(QLabel("동작 이름:"))
@@ -208,10 +270,8 @@ class ActionEditorDialog(QDialog):
         
         # 이벤트 연결
         self.action_type_combo.currentIndexChanged.connect(self.on_action_type_changed)
-
-        # 추가: 탭 변경 이벤트를 콤보박스와 동기화
         self.tab_widget.currentChanged.connect(self.on_tab_changed)
-
+        
         self.capture_pos_btn.clicked.connect(lambda: self.start_capture_mode("move"))
         self.capture_click_pos_btn.clicked.connect(lambda: self.start_capture_mode("click"))
         self.capture_drag_start_btn.clicked.connect(lambda: self.start_capture_mode("drag_start"))
@@ -330,6 +390,9 @@ class ActionEditorDialog(QDialog):
         if file_path:
             app_logger.info(f"텍스트 파일 선택: {file_path}")
             try:
+                # 먼저 기존 리스트 초기화
+                self.text_list_widget.clear()
+                
                 with open(file_path, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
                     count = 0
@@ -343,7 +406,7 @@ class ActionEditorDialog(QDialog):
                 error_msg = f"파일을 불러오는 중 오류가 발생했습니다: {str(e)}"
                 app_logger.error(error_msg)
                 QMessageBox.warning(self, "오류", error_msg)
-    
+
     def _load_action_data(self, action):
         """
         기존 동작 데이터 로드
@@ -492,6 +555,33 @@ class ActionEditorDialog(QDialog):
                     name=name,
                     text_list=text_list
                 )
+            
+            elif action_type == 6:  # 지연 시간
+                delay = self.delay_spin.value()
+                app_logger.debug(f"지연 시간 동작 생성: {delay}ms")
+                return DelayAction(
+                    name=name,
+                    delay=delay
+                )
+            
+            elif action_type == 7:  # 클립보드 저장
+                output_file = self.clipboard_file_edit.text()
+                app_logger.debug(f"클립보드 저장 동작 생성: {output_file}")
+                return ClipboardSaveAction(
+                    name=name,
+                    output_file=output_file
+                )
+            
+            elif action_type == 8:  # 폴더 모니터링
+                folder_path = self.folder_path_edit.text()
+                filename = self.folder_filename_edit.text()
+                app_logger.debug(f"폴더 모니터링 동작 생성: {folder_path}, 파일명: {filename}")
+                action = FolderMonitorAction(
+                    name=name,
+                    folder_path=folder_path
+                )
+                action.filename_template = filename
+                return action
         
         except Exception as e:
             app_logger.error(f"동작 생성 중 오류 발생: {str(e)}", exc_info=True)
@@ -521,3 +611,29 @@ class ActionEditorDialog(QDialog):
         """
         app_logger.log_ui_action("동작 편집 취소 버튼 클릭")
         super().reject()
+
+    def browse_clipboard_file(self):
+        """
+        클립보드 저장 파일 경로 선택
+        """
+        file_path, _ = QFileDialog.getSaveFileName(self, "클립보드 저장 파일 선택", "", 
+                                                "텍스트 파일 (*.txt);;모든 파일 (*.*)")
+        if file_path:
+            self.clipboard_file_edit.setText(file_path)
+
+    def browse_folder_path(self):
+        """
+        모니터링할 폴더 경로 선택
+        """
+        folder_path = QFileDialog.getExistingDirectory(self, "모니터링할 폴더 선택")
+        if folder_path:
+            self.folder_path_edit.setText(folder_path)
+
+    def on_common_combo_changed(self, index):
+        """
+        자주 사용하는 키 조합 선택 시 처리
+        """
+        if index > 0:  # 0번은 "선택하세요" 항목
+            key_combos = ["", "ctrl+c", "ctrl+v", "ctrl+a", "alt+tab"]
+            self.key_combo_text.setText(key_combos[index])
+            self.common_combo.setCurrentIndex(0)  # 선택 후 다시 초기 항목으로 되돌림

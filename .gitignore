@@ -41,6 +41,7 @@ macro-env/
 
 # Local configuration
 config.local.json
+*.json
 
 # Temporary files
 temp/
@@ -50,3 +51,4 @@ dist/
 # marge codes to text
 merge.py
 merged_code.txt
+require.txt

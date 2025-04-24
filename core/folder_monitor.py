@@ -39,8 +39,10 @@ class FolderMonitor(QObject):
         
         # 폴더 모니터링 설정
         self.folder_path = ""
+        self.filename_template = "clipboard.txt"  # 기본 파일명
         self.monitoring = False
         self.observer = None
+        self.initial_folders = []  # 시작 시 폴더 목록
         
         app_logger.info("폴더 모니터 초기화 완료")
     
@@ -50,6 +52,13 @@ class FolderMonitor(QObject):
         """
         app_logger.debug(f"모니터링 폴더 경로 설정: {folder_path}")
         self.folder_path = folder_path
+    
+    def set_filename_template(self, filename):
+        """
+        저장할 파일명 템플릿 설정
+        """
+        app_logger.debug(f"저장 파일명 템플릿 설정: {filename}")
+        self.filename_template = filename if filename else "clipboard.txt"
     
     def is_monitoring(self):
         """
@@ -65,9 +74,11 @@ class FolderMonitor(QObject):
             app_logger.warning("폴더 모니터링을 시작할 수 없음: 이미 모니터링 중이거나 폴더 경로가 유효하지 않음")
             return
         
-        # 클립보드 초기화
-        pyperclip.copy('')
-        app_logger.debug("클립보드 내용 초기화")
+        # 클립보드 초기화는 하지 않음 (Ctrl+C에서 처리)
+        
+        # 시작 시 폴더 목록 저장
+        self.initial_folders = self._get_subfolders()
+        app_logger.debug(f"시작 시 하위 폴더 개수: {len(self.initial_folders)}")
         
         self.monitoring = True
         
@@ -102,6 +113,32 @@ class FolderMonitor(QObject):
         
         self.status_changed.emit("폴더 모니터링 중지됨")
     
+    def _get_subfolders(self):
+        """
+        현재 하위 폴더 목록 가져오기
+        """
+        subfolders = []
+        for name in os.listdir(self.folder_path):
+            full_path = os.path.join(self.folder_path, name)
+            if os.path.isdir(full_path):
+                subfolders.append(full_path)
+        return subfolders
+    
+    def check_new_folders(self):
+        """
+        새로 생성된 폴더 확인
+        """
+        if not self.monitoring or not self.folder_path:
+            return []
+        
+        current_folders = self._get_subfolders()
+        new_folders = [f for f in current_folders if f not in self.initial_folders]
+        
+        if new_folders:
+            app_logger.debug(f"새 폴더 감지: {len(new_folders)}개")
+        
+        return new_folders
+    
     def handle_new_folder(self, folder_path):
         """
         새 폴더 생성 처리
@@ -117,9 +154,8 @@ class FolderMonitor(QObject):
             
             # 내용이 있는 경우 파일에 저장
             if clipboard_content:
-                # 저장할 파일 경로 생성 (폴더명 + .txt)
-                folder_name = os.path.basename(folder_path)
-                file_path = os.path.join(folder_path, f"{folder_name}.txt")
+                # 저장할 파일 경로 생성 (사용자 지정 파일명 또는 기본값)
+                file_path = os.path.join(folder_path, self.filename_template)
                 
                 # 내용 길이 로깅 (전체 내용을 로깅하면 너무 길어질 수 있음)
                 content_preview = clipboard_content[:50] + "..." if len(clipboard_content) > 50 else clipboard_content
@@ -132,15 +168,51 @@ class FolderMonitor(QObject):
                 
                 app_logger.debug(f"저장된 파일 경로: {file_path}")
                 
-                # 클립보드 비우기
-                pyperclip.copy('')
-                app_logger.debug("클립보드 내용 비움")
+                # 클립보드는 비우지 않음 (Ctrl+C에서 처리)
                 
                 self.status_changed.emit(f"클립보드 내용이 새 폴더에 저장됨: {file_path}")
+                return True
             else:
                 app_logger.warning(f"새 폴더가 감지되었으나 클립보드가 비어 있음: {folder_path}")
+                return False
         
         except Exception as e:
             error_msg = f"새 폴더 처리 중 오류 발생: {str(e)}"
             app_logger.error(error_msg, exc_info=True)
             self.status_changed.emit(error_msg)
+            return False
+    
+    def save_to_parent_folder(self):
+        """
+        새 폴더가 없을 경우 부모 폴더에 타임스탬프 파일명으로 저장
+        """
+        if not self.monitoring or not self.folder_path:
+            return False
+        
+        try:
+            # 클립보드 내용 가져오기
+            clipboard_content = pyperclip.paste()
+            
+            if clipboard_content:
+                # 타임스탬프 파일명 생성
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"clipboard_{timestamp}.txt"
+                file_path = os.path.join(self.folder_path, filename)
+                
+                # 파일에 내용 저장
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(clipboard_content)
+                
+                app_logger.info(f"클립보드 내용을 타임스탬프 파일로 저장: {file_path}")
+                
+                self.status_changed.emit(f"클립보드 내용이 저장됨: {file_path}")
+                return True
+            else:
+                app_logger.warning("클립보드가 비어 있어 저장하지 않음")
+                return False
+                
+        except Exception as e:
+            error_msg = f"부모 폴더 저장 중 오류 발생: {str(e)}"
+            app_logger.error(error_msg, exc_info=True)
+            self.status_changed.emit(error_msg)
+            return False
