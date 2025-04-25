@@ -535,11 +535,17 @@ class FolderMonitorAction(MacroAction):
             
             app_logger.debug(f"폴더 모니터링 시작: {self.folder_path}, 파일명: {self.filename_template}")
             
-            # 폴더 모니터 초기화 및 시작
-            self.folder_monitor = FolderMonitor()
-            self.folder_monitor.set_folder_path(self.folder_path)
-            self.folder_monitor.set_filename_template(self.filename_template)
-            self.folder_monitor.start_monitoring()
+            # 이미 초기화된 경우 그대로 사용
+            if self.folder_monitor is None:
+                # 폴더 모니터 초기화 및 시작
+                self.folder_monitor = FolderMonitor()
+                self.folder_monitor.set_folder_path(self.folder_path)
+                self.folder_monitor.set_filename_template(self.filename_template)
+                self.folder_monitor.start_monitoring()
+            else:
+                # 이미 초기화된 경우 명시적으로 폴더 확인 및 처리
+                app_logger.debug("폴더 모니터링이 이미 초기화됨, 명시적으로 폴더 확인 수행")
+                self.folder_monitor.check_and_process_folders()
             
             return True
         except Exception as e:
@@ -562,3 +568,14 @@ class FolderMonitorAction(MacroAction):
             "filename_template": self.filename_template
         })
         return data
+    
+    def reset(self):
+        """
+        모니터링 상태 초기화 - 매크로 시작 시 호출됨
+        """
+        if self.folder_monitor:
+            app_logger.debug("폴더 모니터링 상태 초기화")
+            # 기존 모니터링 중지
+            self.folder_monitor.stop_monitoring()
+            # 다시 시작
+            self.folder_monitor.start_monitoring()
