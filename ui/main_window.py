@@ -410,10 +410,7 @@ class MainWindow(QMainWindow):
             self.actions_list.clear()
             for action in self.macro_engine.actions:
                 self.actions_list.addItem(action.to_list_item())
-            
-            # 설정 업데이트
-            self.delay_spin.setValue(self.macro_engine.delay)
-            
+                        
             loop_count = self.macro_engine.loop_count
             if loop_count <= 0:
                 self.infinite_loop_check.setChecked(True)
