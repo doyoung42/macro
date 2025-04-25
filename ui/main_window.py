@@ -459,11 +459,8 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "경고", "실행할 매크로 동작이 없습니다.")
             return
         
-        # 매크로 설정
-        # self.macro_engine.set_delay(self.delay_spin.value())
-        # app_logger.info(f"매크로 지연 시간 설정: {self.delay_spin.value()}ms")
-
-        self.macro_engine.set_delay(100) # 기본 지연값 100ms로 설정
+        self.macro_engine.set_delay(100)
+        app_logger.info("매크로 동작 간 지연 시간 설정: 100ms (고정값)")
         
         if self.infinite_loop_check.isChecked():
             app_logger.info("매크로 무한 반복 설정")

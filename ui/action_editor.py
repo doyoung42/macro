@@ -472,6 +472,34 @@ class ActionEditorDialog(QDialog):
             self.text_list_widget.clear()
             for text in action.text_list:
                 self.text_list_widget.addItem(text)
+        
+        # 아래 코드 추가: 지연 시간 동작 처리
+        elif isinstance(action, DelayAction):
+            app_logger.debug(f"지연 시간 동작 로드: {action.delay}ms")
+            self.action_type_combo.setCurrentIndex(6)
+            QApplication.processEvents()
+            self.tab_widget.setCurrentIndex(6)
+            
+            self.delay_spin.setValue(action.delay)
+        
+        # 아래 코드 추가: 클립보드 저장 동작 처리
+        elif isinstance(action, ClipboardSaveAction):
+            app_logger.debug(f"클립보드 저장 동작 로드: {action.output_file}")
+            self.action_type_combo.setCurrentIndex(7)
+            QApplication.processEvents()
+            self.tab_widget.setCurrentIndex(7)
+            
+            self.clipboard_file_edit.setText(action.output_file)
+        
+        # 아래 코드 추가: 폴더 모니터링 동작 처리
+        elif isinstance(action, FolderMonitorAction):
+            app_logger.debug(f"폴더 모니터링 동작 로드: {action.folder_path}, 파일명: {action.filename_template}")
+            self.action_type_combo.setCurrentIndex(8)
+            QApplication.processEvents()
+            self.tab_widget.setCurrentIndex(8)
+            
+            self.folder_path_edit.setText(action.folder_path)
+            self.folder_filename_edit.setText(action.filename_template)
 
     def get_action(self):
         """
