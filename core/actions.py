@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 # core/actions.py
 
-import time 
 from PyQt5.QtWidgets import QListWidgetItem
 from PyQt5.QtCore import QObject
 from utils.logger import app_logger
@@ -70,6 +69,14 @@ class MacroAction(QObject):
                 x=data.get("x", 0),
                 y=data.get("y", 0),
                 button=data.get("button", 0)
+            )
+        elif action_type == "MouseScrollAction":
+            return MouseScrollAction(
+                name=data.get("name", "마우스 스크롤"),
+                x=data.get("x", 0),
+                y=data.get("y", 0),
+                direction=data.get("direction", 0),
+                clicks=data.get("clicks", 1)
             )
         elif action_type == "MouseDragDropAction":
             return MouseDragDropAction(
@@ -316,26 +323,23 @@ class KeyCombinationAction(MacroAction):
         """
         try:
             import pyautogui
+            import time
+            import pyperclip
+            
             keys = self.key_combination.split('+')
             keys = [key.strip().lower() for key in keys]  # 모든 키를 소문자로 변환
             
             app_logger.debug(f"키 조합 입력: {self.key_combination}")
             
-            # Ctrl+C 처리 - 클립보드 클리어 필요
+            # Ctrl+C 처리 - 클립보드 클리어 하지 않음
             if len(keys) == 2 and keys[0] in ['ctrl', 'control'] and keys[1] == 'c':
-                app_logger.debug("복사(Ctrl+C) 동작 감지 - 클립보드 클리어 후 동작 실행")
-                try:
-                    import pyperclip
-                    # 클립보드 비우기
-                    pyperclip.copy('')
-                    app_logger.debug("클립보드 내용 클리어 완료")
-                except Exception as e:
-                    app_logger.error(f"클립보드 클리어 실패: {str(e)}", exc_info=True)
-                    
+                app_logger.debug("복사(Ctrl+C) 동작 감지")
                 # 키 조합 실행
                 pyautogui.hotkey(*keys)
+                # 클립보드 복사가 완료될 때까지 잠시 대기
+                time.sleep(0.5)  # 500ms 대기
                 
-            # Ctrl+V 또는 기타 키 조합 처리 - 클립보드 유지
+            # Ctrl+V 또는 기타 키 조합 처리
             else:
                 # 키 조합 실행
                 pyautogui.hotkey(*keys)
@@ -374,27 +378,32 @@ class TextListInputAction(MacroAction):
     
     def execute(self):
         """
-        키 조합 입력 실행
+        텍스트 리스트에서 다음 항목 입력 실행
         """
         try:
             import pyautogui
-            keys = self.key_combination.split('+')
-            keys = [key.strip().lower() for key in keys]  # 소문자로 변환하여 처리
             
-            app_logger.debug(f"키 조합 입력: {self.key_combination}")
+            if not self.text_list or self.current_index >= len(self.text_list):
+                app_logger.warning("텍스트 리스트가 비어 있거나 모든 항목을 사용했습니다.")
+                return False
             
-            # Ctrl+V 처리를 위한 특별 로직
-            if len(keys) == 2 and keys[0] in ['ctrl', 'control'] and keys[1] == 'v':
-                app_logger.debug("클립보드 붙여넣기 기능 사용")
-                pyautogui.hotkey('ctrl', 'v')
-            else:
-                pyautogui.hotkey(*keys)
+            # 현재 인덱스의 텍스트 가져오기
+            text = self.text_list[self.current_index]
+            preview = text[:20] + "..." if len(text) > 20 else text
+            app_logger.debug(f"텍스트 리스트 입력: [{self.current_index}] {preview}")
+            
+            # 텍스트 입력
+            pyautogui.PAUSE = 0.05
+            pyautogui.write(text, interval=0.05)
+            
+            # 다음 항목으로 인덱스 증가
+            self.current_index += 1
             
             return True
         except Exception as e:
-            app_logger.error(f"키 조합 입력 실패: {str(e)}", exc_info=True)
+            app_logger.error(f"텍스트 리스트 입력 실패: {str(e)}", exc_info=True)
             return False
-    
+        
     def reset(self):
         """
         인덱스 초기화
@@ -448,6 +457,7 @@ class DelayAction(MacroAction):
         지연 시간 실행
         """
         try:
+            import time
             delay_sec = self.delay / 1000.0
             app_logger.debug(f"지연 시간 실행: {self.delay}ms ({delay_sec:.2f}초)")
             time.sleep(delay_sec)
@@ -579,3 +589,65 @@ class FolderMonitorAction(MacroAction):
             self.folder_monitor.stop_monitoring()
             # 다시 시작
             self.folder_monitor.start_monitoring()
+        else:
+            app_logger.debug("초기화할 폴더 모니터가 없습니다")
+
+class MouseScrollAction(MacroAction):
+    """
+    마우스 스크롤 동작
+    """
+    def __init__(self, x=0, y=0, direction=0, clicks=1, name="마우스 스크롤"):
+        """
+        direction: 0=아래로, 1=위로
+        clicks: 스크롤 클릭 횟수
+        """
+        super().__init__(name)
+        self.x = x
+        self.y = y
+        self.direction = direction
+        self.clicks = clicks
+    
+    def execute(self):
+        """
+        마우스 스크롤 실행
+        """
+        try:
+            import pyautogui
+            
+            # 마우스 위치 이동
+            app_logger.debug(f"마우스 이동: ({self.x}, {self.y})")
+            pyautogui.moveTo(self.x, self.y)
+            
+            # 방향에 따라 스크롤 값 결정
+            scroll_value = self.clicks
+            if self.direction == 0:  # 아래로 스크롤
+                scroll_value = -scroll_value
+            
+            # 스크롤 실행
+            app_logger.debug(f"마우스 스크롤: 방향={self.direction}, 클릭={self.clicks}, 값={scroll_value}")
+            pyautogui.scroll(scroll_value)
+            
+            return True
+        except Exception as e:
+            app_logger.error(f"마우스 스크롤 실패: {str(e)}", exc_info=True)
+            return False
+    
+    def get_description(self):
+        """
+        동작 설명 반환
+        """
+        direction_str = "위로" if self.direction == 1 else "아래로"
+        return f"좌표 ({self.x}, {self.y})에서 {direction_str} {self.clicks}칸 스크롤"
+    
+    def to_dict(self):
+        """
+        동작을 딕셔너리로 변환
+        """
+        data = super().to_dict()
+        data.update({
+            "x": self.x,
+            "y": self.y,
+            "direction": self.direction,
+            "clicks": self.clicks
+        })
+        return data

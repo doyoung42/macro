@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 # core/macro_engine.py
 
-import time
 import threading
 import json
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QTimer
@@ -170,7 +169,7 @@ class MacroEngine(QObject):
         self.keyboard_listener = keyboard.Listener(on_press=self.on_key_press)
         self.keyboard_listener.start()
         
-        # 텍스트 리스트 동작 인덱스 초기화
+        # 텍스트 리스트 동작과 폴더 모니터링 동작 인덱스 초기화
         for action in self.actions:
             if hasattr(action, 'reset'):
                 action.reset()
@@ -182,7 +181,7 @@ class MacroEngine(QObject):
         self.thread.start()
         
         self.status_changed.emit("매크로 실행 시작")
-    
+        
     def pause(self):
         """
         매크로 일시 정지
@@ -222,7 +221,12 @@ class MacroEngine(QObject):
         # 스레드 종료 대기 - 현재 스레드가 아닌 경우에만 join 시도
         if self.thread and self.thread.is_alive() and self.thread != threading.current_thread():
             app_logger.debug("매크로 스레드 종료 대기")
-            self.thread.join(1.0)  # 최대 1초간 대기
+            try:
+                self.thread.join(1.0)  # 최대 1초간 대기
+                if self.thread.is_alive():
+                    app_logger.warning("매크로 스레드가 1초 내에 종료되지 않았습니다")
+            except Exception as e:
+                app_logger.error(f"스레드 종료 대기 중 오류: {str(e)}", exc_info=True)
         self.thread = None
         
         self.status_changed.emit("매크로 중지됨")
@@ -233,6 +237,12 @@ class MacroEngine(QObject):
         매크로 실행 스레드 함수
         """
         try:
+            # 실행 전 클립보드 내용 확인
+            import pyperclip
+            import time
+            initial_clipboard = pyperclip.paste()
+            app_logger.debug(f"매크로 시작 시 클립보드 내용 (길이: {len(initial_clipboard)})")
+            
             # 무한 반복 또는 지정된 횟수만큼 반복
             loop_counter = 0
             infinite_loop = (self.loop_count <= 0)
@@ -256,6 +266,14 @@ class MacroEngine(QObject):
                     try:
                         app_logger.info(f"매크로 동작: [{action_index}] {action.name} - 반복: {loop_counter+1}")
                         success = action.execute()
+                        
+                        # 파일 클립보드 넣기 동작 이후에 클립보드 내용 확인
+                        if action.name == "파일 클립보드 넣기" or "ctrl+c" in getattr(action, 'key_combination', ''):
+                            time.sleep(0.5)  # 복사 동작 후 대기
+                            clipboard_content = pyperclip.paste()
+                            content_preview = clipboard_content[:50] + "..." if len(clipboard_content) > 50 else clipboard_content
+                            app_logger.debug(f"복사 동작 후 클립보드 내용 (길이: {len(clipboard_content)}): {content_preview}")
+                        
                         if not success:
                             error_msg = f"동작 실패: {action.name}"
                             app_logger.warning(error_msg)
@@ -273,7 +291,10 @@ class MacroEngine(QObject):
                 if not infinite_loop:
                     loop_counter += 1
                     app_logger.debug(f"매크로 반복 완료: {loop_counter}/{self.loop_count}")
-            
+                elif self.running:
+                    # 무한 반복 모드에서만 매 사이클 후 약간의 지연 추가 (CPU 부하 감소)
+                    time.sleep(0.01)  # 10ms 지연
+                
             # 정상 종료 시
             if self.running:
                 app_logger.info("매크로 모든 반복 실행 완료")
@@ -313,6 +334,12 @@ class MacroEngine(QObject):
                 "actions": actions_data
             }
             
+            # 디렉토리 확인 및 생성
+            dir_path = os.path.dirname(file_path)
+            if dir_path and not os.path.exists(dir_path):
+                app_logger.debug(f"저장 디렉토리 생성: {dir_path}")
+                os.makedirs(dir_path)
+            
             # JSON 파일로 저장
             with open(file_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -320,6 +347,14 @@ class MacroEngine(QObject):
             app_logger.info(f"매크로 저장 완료: {len(actions_data)}개 동작")
             return True
         
+        except IOError as e:
+            error_msg = f"파일 저장 중 I/O 오류 발생: {str(e)}"
+            app_logger.error(error_msg, exc_info=True)
+            return False
+        except json.JSONEncodeError as e:
+            error_msg = f"JSON 인코딩 오류 발생: {str(e)}"
+            app_logger.error(error_msg, exc_info=True)
+            return False
         except Exception as e:
             error_msg = f"매크로 저장 중 오류 발생: {str(e)}"
             app_logger.error(error_msg, exc_info=True)
