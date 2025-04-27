@@ -12,9 +12,10 @@ from PyQt5.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, QL
 from PyQt5.QtCore import Qt, pyqtSlot, QTimer, QPoint
 from PyQt5.QtGui import QCursor
 
-from core.actions import (MacroAction, MouseClickAction, MouseMoveAction, 
-                        KeyboardInputAction, KeyCombinationAction, 
-                        MouseDragDropAction, TextListInputAction, DelayAction,
+from core.actions import (MacroAction, 
+                        MouseClickAction, MouseMoveAction, MouseDragDropAction, MouseScrollAction,
+                        KeyboardInputAction, KeyCombinationAction,                          
+                        TextListInputAction, DelayAction,
                         ClipboardSaveAction, FolderMonitorAction)
 from utils.logger import app_logger
 
@@ -54,6 +55,7 @@ class ActionEditorDialog(QDialog):
             "마우스 이동",
             "마우스 클릭",
             "마우스 드래그 & 드롭",
+            "마우스 스크롤",
             "키보드 입력",
             "키 조합",
             "텍스트 리스트 입력",
@@ -148,8 +150,40 @@ class ActionEditorDialog(QDialog):
         
         drag_drop_layout.addLayout(drag_pos_layout)
         drag_drop_layout.addStretch()
+
+        # 4. 마우스 스크롤 탭
+        self.mouse_scroll_tab = QWidget()
+        mouse_scroll_layout = QVBoxLayout(self.mouse_scroll_tab)
+
+        scroll_pos_layout = QGridLayout()
+        scroll_pos_layout.addWidget(QLabel("X 좌표:"), 0, 0)
+        self.scroll_x_spin = QSpinBox()
+        self.scroll_x_spin.setRange(0, 9999)
+        scroll_pos_layout.addWidget(self.scroll_x_spin, 0, 1)
+
+        scroll_pos_layout.addWidget(QLabel("Y 좌표:"), 1, 0)
+        self.scroll_y_spin = QSpinBox()
+        self.scroll_y_spin.setRange(0, 9999)
+        scroll_pos_layout.addWidget(self.scroll_y_spin, 1, 1)
+
+        scroll_pos_layout.addWidget(QLabel("스크롤 방향:"), 2, 0)
+        self.scroll_direction_combo = QComboBox()
+        self.scroll_direction_combo.addItems(["아래로", "위로"])
+        scroll_pos_layout.addWidget(self.scroll_direction_combo, 2, 1)
+
+        scroll_pos_layout.addWidget(QLabel("스크롤 클릭 수:"), 3, 0)
+        self.scroll_clicks_spin = QSpinBox()
+        self.scroll_clicks_spin.setRange(1, 50)
+        self.scroll_clicks_spin.setValue(3)
+        scroll_pos_layout.addWidget(self.scroll_clicks_spin, 3, 1)
+
+        self.capture_scroll_pos_btn = QPushButton("마우스 위치 캡처")
+        scroll_pos_layout.addWidget(self.capture_scroll_pos_btn, 4, 0, 1, 2)
+
+        mouse_scroll_layout.addLayout(scroll_pos_layout)
+        mouse_scroll_layout.addStretch()
         
-        # 4. 키보드 입력 탭
+        # 5. 키보드 입력 탭
         self.keyboard_tab = QWidget()
         keyboard_layout = QVBoxLayout(self.keyboard_tab)
         
@@ -157,28 +191,54 @@ class ActionEditorDialog(QDialog):
         self.keyboard_text = QTextEdit()
         keyboard_layout.addWidget(self.keyboard_text)
         
-        # 5. 키 조합 입력 탭
+        # 6. 키 조합 입력 탭
         self.key_combo_tab = QWidget()
         key_combo_layout = QVBoxLayout(self.key_combo_tab)
-        
+
         key_combo_layout.addWidget(QLabel("키 조합 (예: ctrl+c, alt+tab):"))
         self.key_combo_text = QLineEdit()
         key_combo_layout.addWidget(self.key_combo_text)
         key_combo_layout.addWidget(QLabel("여러 키를 동시에 입력하려면 '+' 기호로 구분하세요."))
-        key_combo_layout.addStretch()
-        
-        # 5-1. 자주 사용하는 키 조합 추가
+
+        # 특수 키 선택 부분
+        special_keys_layout = QHBoxLayout()
+        special_keys_layout.addWidget(QLabel("특수 키:"))
+        self.special_keys_combo = QComboBox()
+        self.special_keys_combo.addItems([
+            "선택하세요",
+            "화살표 키",
+            "기능 키",
+            "제어 키",
+            "기타 특수 키"
+        ])
+        self.special_keys_combo.currentIndexChanged.connect(self.on_special_keys_category_changed)
+        special_keys_layout.addWidget(self.special_keys_combo)
+
+        # 특수 키 세부 선택
+        self.specific_key_combo = QComboBox()
+        self.specific_key_combo.setEnabled(False)
+        special_keys_layout.addWidget(self.specific_key_combo)
+
+        # 특수 키 추가 버튼
+        self.add_special_key_btn = QPushButton("추가")
+        self.add_special_key_btn.setEnabled(False)
+        self.add_special_key_btn.clicked.connect(self.add_special_key_to_combo)
+        special_keys_layout.addWidget(self.add_special_key_btn)
+
+        key_combo_layout.addLayout(special_keys_layout)
+
+        # 자주 사용하는 키 조합 추가
         common_combo_layout = QHBoxLayout()
         common_combo_layout.addWidget(QLabel("자주 사용하는 키 조합:"))
         self.common_combo = QComboBox()
         self.common_combo.addItems(["선택하세요", "ctrl+c (복사)", "ctrl+v (붙여넣기)", "ctrl+a (전체선택)", "alt+tab (창전환)"])
         self.common_combo.currentIndexChanged.connect(self.on_common_combo_changed)
         common_combo_layout.addWidget(self.common_combo)
-        
+
         key_combo_layout.addLayout(common_combo_layout)
         key_combo_layout.addStretch()
 
-        # 6. 텍스트 리스트 입력 탭
+        # 7. 텍스트 리스트 입력 탭
         self.text_list_tab = QWidget()
         text_list_layout = QVBoxLayout(self.text_list_tab)
         
@@ -197,7 +257,7 @@ class ActionEditorDialog(QDialog):
         
         text_list_layout.addLayout(text_list_buttons)
 
-        # 7. 지연 동작 탭
+        # 8. 지연 동작 탭
         self.delay_tab = QWidget()
         delay_layout = QVBoxLayout(self.delay_tab)
 
@@ -209,7 +269,7 @@ class ActionEditorDialog(QDialog):
         delay_layout.addWidget(self.delay_spin)
         delay_layout.addStretch()
         
-        # 8. 클립보드 저장 탭
+        # 9. 클립보드 저장 탭
         self.clipboard_tab = QWidget()
         clipboard_layout = QVBoxLayout(self.clipboard_tab)
 
@@ -222,7 +282,7 @@ class ActionEditorDialog(QDialog):
         clipboard_layout.addWidget(clipboard_browse_btn)
         clipboard_layout.addStretch()
         
-        # 9. 폴더 모니터링 탭
+        # 10. 폴더 모니터링 탭
         self.folder_tab = QWidget()
         folder_layout = QVBoxLayout(self.folder_tab)
 
@@ -245,6 +305,7 @@ class ActionEditorDialog(QDialog):
         self.tab_widget.addTab(self.mouse_move_tab, "마우스 이동")
         self.tab_widget.addTab(self.mouse_click_tab, "마우스 클릭")
         self.tab_widget.addTab(self.drag_drop_tab, "드래그 & 드롭")
+        self.tab_widget.addTab(self.mouse_scroll_tab, "마우스 스크롤")
         self.tab_widget.addTab(self.keyboard_tab, "키보드 입력")
         self.tab_widget.addTab(self.key_combo_tab, "키 조합")
         self.tab_widget.addTab(self.text_list_tab, "텍스트 리스트")
@@ -276,7 +337,8 @@ class ActionEditorDialog(QDialog):
         self.capture_click_pos_btn.clicked.connect(lambda: self.start_capture_mode("click"))
         self.capture_drag_start_btn.clicked.connect(lambda: self.start_capture_mode("drag_start"))
         self.capture_drag_end_btn.clicked.connect(lambda: self.start_capture_mode("drag_end"))
-        
+        self.capture_scroll_pos_btn.clicked.connect(lambda: self.start_capture_mode("scroll"))
+
         # 텍스트 리스트 관련 이벤트
         self.add_text_btn.clicked.connect(self.add_text_to_list)
         self.remove_text_btn.clicked.connect(self.remove_text_from_list)
@@ -322,10 +384,17 @@ class ActionEditorDialog(QDialog):
         app_logger.log_ui_action("마우스 위치 캡처 시작", f"모드: {mode}")
         self.capture_mode = mode
         self.setWindowOpacity(0.3)
-        self.capture_timer.start(100)  # 100ms마다 위치 업데이트
         
-        # 3초 후 자동으로 캡처 모드 종료
-        QTimer.singleShot(3000, self.stop_capture_mode)
+        # 타이머를 별도 스레드에서 실행하는 대신 Qt 타이머 사용
+        if not self.capture_timer.isActive():
+            self.capture_timer.start(100)  # 100ms마다 위치 업데이트
+        
+        # 2.5초 후 자동으로 캡처 모드 종료
+        QTimer.singleShot(2500, self.stop_capture_mode)
+        
+        # 사용자에게 안내 메시지 표시
+        QMessageBox.information(self, "위치 캡처", "2초 동안 마우스를 원하는 위치에 놓으세요.")
+
     
     def stop_capture_mode(self):
         """
@@ -359,6 +428,10 @@ class ActionEditorDialog(QDialog):
             app_logger.debug(f"드래그 끝 위치 캡처: ({pos.x()}, {pos.y()})")
             self.drag_end_x_spin.setValue(pos.x())
             self.drag_end_y_spin.setValue(pos.y())
+        elif self.capture_mode == "scroll":
+            app_logger.debug(f"스크롤 위치 캡처: ({pos.x()}, {pos.y()})")
+            self.scroll_x_spin.setValue(pos.x())
+            self.scroll_y_spin.setValue(pos.y())
     
     def add_text_to_list(self):
         """
@@ -418,19 +491,14 @@ class ActionEditorDialog(QDialog):
         if isinstance(action, MouseMoveAction):
             app_logger.debug(f"마우스 이동 동작 로드: ({action.x}, {action.y})")
             self.action_type_combo.setCurrentIndex(0)  # 콤보박스 인덱스 먼저 설정
-            QApplication.processEvents()  # UI 업데이트 적용
             self.tab_widget.setCurrentIndex(0)  # 탭 인덱스 설정
-            
-            # 값 설정
             self.mouse_x_spin.setValue(action.x)
             self.mouse_y_spin.setValue(action.y)
         
         elif isinstance(action, MouseClickAction):
             app_logger.debug(f"마우스 클릭 동작 로드: ({action.x}, {action.y}), 버튼: {action.button}")
             self.action_type_combo.setCurrentIndex(1)
-            QApplication.processEvents()
             self.tab_widget.setCurrentIndex(1)
-            
             self.click_x_spin.setValue(action.x)
             self.click_y_spin.setValue(action.y)
             self.click_type_combo.setCurrentIndex(action.button)
@@ -438,36 +506,37 @@ class ActionEditorDialog(QDialog):
         elif isinstance(action, MouseDragDropAction):
             app_logger.debug(f"마우스 드래그&드롭 동작 로드: ({action.start_x}, {action.start_y}) -> ({action.end_x}, {action.end_y})")
             self.action_type_combo.setCurrentIndex(2)
-            QApplication.processEvents()
             self.tab_widget.setCurrentIndex(2)
-            
             self.drag_start_x_spin.setValue(action.start_x)
             self.drag_start_y_spin.setValue(action.start_y)
             self.drag_end_x_spin.setValue(action.end_x)
             self.drag_end_y_spin.setValue(action.end_y)
         
+        elif isinstance(action, MouseScrollAction):
+            app_logger.debug(f"마우스 스크롤 동작 로드: ({action.x}, {action.y}), 방향: {action.direction}, 클릭: {action.clicks}")
+            self.action_type_combo.setCurrentIndex(3)
+            self.tab_widget.setCurrentIndex(3)
+            self.scroll_x_spin.setValue(action.x)
+            self.scroll_y_spin.setValue(action.y)
+            self.scroll_direction_combo.setCurrentIndex(action.direction)
+            self.scroll_clicks_spin.setValue(action.clicks)
+
         elif isinstance(action, KeyboardInputAction):
             app_logger.debug(f"키보드 입력 동작 로드: 텍스트 길이: {len(action.text)}")
-            self.action_type_combo.setCurrentIndex(3)
-            QApplication.processEvents()
-            self.tab_widget.setCurrentIndex(3)
-            
+            self.action_type_combo.setCurrentIndex(4)
+            self.tab_widget.setCurrentIndex(4)
             self.keyboard_text.setText(action.text)
-        
+
         elif isinstance(action, KeyCombinationAction):
             app_logger.debug(f"키 조합 동작 로드: {action.key_combination}")
-            self.action_type_combo.setCurrentIndex(4)
-            QApplication.processEvents()
-            self.tab_widget.setCurrentIndex(4)
-            
+            self.action_type_combo.setCurrentIndex(5)
+            self.tab_widget.setCurrentIndex(5)
             self.key_combo_text.setText(action.key_combination)
         
         elif isinstance(action, TextListInputAction):
             app_logger.debug(f"텍스트 리스트 동작 로드: {len(action.text_list)}개 항목")
-            self.action_type_combo.setCurrentIndex(5)
-            QApplication.processEvents()
-            self.tab_widget.setCurrentIndex(5)
-            
+            self.action_type_combo.setCurrentIndex(6)
+            self.tab_widget.setCurrentIndex(6)
             # 기존 항목 제거 후 새로 추가
             self.text_list_widget.clear()
             for text in action.text_list:
@@ -476,28 +545,22 @@ class ActionEditorDialog(QDialog):
         # 아래 코드 추가: 지연 시간 동작 처리
         elif isinstance(action, DelayAction):
             app_logger.debug(f"지연 시간 동작 로드: {action.delay}ms")
-            self.action_type_combo.setCurrentIndex(6)
-            QApplication.processEvents()
-            self.tab_widget.setCurrentIndex(6)
-            
+            self.action_type_combo.setCurrentIndex(7)
+            self.tab_widget.setCurrentIndex(7)
             self.delay_spin.setValue(action.delay)
         
         # 아래 코드 추가: 클립보드 저장 동작 처리
         elif isinstance(action, ClipboardSaveAction):
             app_logger.debug(f"클립보드 저장 동작 로드: {action.output_file}")
-            self.action_type_combo.setCurrentIndex(7)
-            QApplication.processEvents()
-            self.tab_widget.setCurrentIndex(7)
-            
+            self.action_type_combo.setCurrentIndex(8)
+            self.tab_widget.setCurrentIndex(8)
             self.clipboard_file_edit.setText(action.output_file)
         
         # 아래 코드 추가: 폴더 모니터링 동작 처리
         elif isinstance(action, FolderMonitorAction):
             app_logger.debug(f"폴더 모니터링 동작 로드: {action.folder_path}, 파일명: {action.filename_template}")
-            self.action_type_combo.setCurrentIndex(8)
-            QApplication.processEvents()
-            self.tab_widget.setCurrentIndex(8)
-            
+            self.action_type_combo.setCurrentIndex(9)
+            self.tab_widget.setCurrentIndex(9)
             self.folder_path_edit.setText(action.folder_path)
             self.folder_filename_edit.setText(action.filename_template)
 
@@ -557,7 +620,21 @@ class ActionEditorDialog(QDialog):
                     end_y=end_y
                 )
             
-            elif action_type == 3:  # 키보드 입력
+            elif action_type == 3:  # 마우스 스크롤
+                x = self.scroll_x_spin.value()
+                y = self.scroll_y_spin.value()
+                direction = self.scroll_direction_combo.currentIndex()
+                clicks = self.scroll_clicks_spin.value()
+                app_logger.debug(f"마우스 스크롤 동작 생성: ({x}, {y}), 방향: {direction}, 클릭: {clicks}")
+                return MouseScrollAction(
+                    name=name,
+                    x=x,
+                    y=y,
+                    direction=direction,
+                    clicks=clicks
+                )
+            
+            elif action_type == 4:  # 키보드 입력
                 text = self.keyboard_text.toPlainText()
                 app_logger.debug(f"키보드 입력 동작 생성: 텍스트 길이: {len(text)}")
                 return KeyboardInputAction(
@@ -565,7 +642,7 @@ class ActionEditorDialog(QDialog):
                     text=text
                 )
             
-            elif action_type == 4:  # 키 조합 입력
+            elif action_type == 5:  # 키 조합 입력
                 key_combination = self.key_combo_text.text()
                 app_logger.debug(f"키 조합 동작 생성: {key_combination}")
                 return KeyCombinationAction(
@@ -573,7 +650,7 @@ class ActionEditorDialog(QDialog):
                     key_combination=key_combination
                 )
             
-            elif action_type == 5:  # 텍스트 리스트 입력
+            elif action_type == 6:  # 텍스트 리스트 입력
                 text_list = []
                 for i in range(self.text_list_widget.count()):
                     text_list.append(self.text_list_widget.item(i).text())
@@ -584,7 +661,7 @@ class ActionEditorDialog(QDialog):
                     text_list=text_list
                 )
             
-            elif action_type == 6:  # 지연 시간
+            elif action_type == 7:  # 지연 시간
                 delay = self.delay_spin.value()
                 app_logger.debug(f"지연 시간 동작 생성: {delay}ms")
                 return DelayAction(
@@ -592,7 +669,7 @@ class ActionEditorDialog(QDialog):
                     delay=delay
                 )
             
-            elif action_type == 7:  # 클립보드 저장
+            elif action_type == 8:  # 클립보드 저장
                 output_file = self.clipboard_file_edit.text()
                 app_logger.debug(f"클립보드 저장 동작 생성: {output_file}")
                 return ClipboardSaveAction(
@@ -600,7 +677,7 @@ class ActionEditorDialog(QDialog):
                     output_file=output_file
                 )
             
-            elif action_type == 8:  # 폴더 모니터링
+            elif action_type == 9:  # 폴더 모니터링
                 folder_path = self.folder_path_edit.text()
                 filename = self.folder_filename_edit.text()
                 app_logger.debug(f"폴더 모니터링 동작 생성: {folder_path}, 파일명: {filename}")
@@ -626,7 +703,7 @@ class ActionEditorDialog(QDialog):
         # 유효성 검사
         action_type = self.action_type_combo.currentIndex()
         
-        if action_type == 5 and self.text_list_widget.count() == 0:
+        if action_type == 6 and self.text_list_widget.count() == 0:
             app_logger.warning("텍스트 리스트가 비어 있음")
             QMessageBox.warning(self, "경고", "텍스트 리스트에 항목을 추가해주세요.")
             return
@@ -665,3 +742,50 @@ class ActionEditorDialog(QDialog):
             key_combos = ["", "ctrl+c", "ctrl+v", "ctrl+a", "alt+tab"]
             self.key_combo_text.setText(key_combos[index])
             self.common_combo.setCurrentIndex(0)  # 선택 후 다시 초기 항목으로 되돌림
+
+    def on_special_keys_category_changed(self, index):
+        """
+        특수 키 카테고리 변경 시 처리
+        """
+        self.specific_key_combo.clear()
+        self.specific_key_combo.setEnabled(index > 0)
+        self.add_special_key_btn.setEnabled(index > 0)
+        
+        if index == 0:  # "선택하세요"
+            return
+        elif index == 1:  # 화살표 키
+            self.specific_key_combo.addItems(["up", "down", "left", "right"])
+        elif index == 2:  # 기능 키
+            # 중지 키로 지정된 키는 제외
+            function_keys = ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12"]
+            stop_key = self.parent().macro_engine.stop_key if hasattr(self.parent(), 'macro_engine') else "f12"
+            
+            # 중지 키가 function_keys에 있으면 제거
+            if stop_key.lower() in function_keys:
+                function_keys.remove(stop_key.lower())
+                app_logger.debug(f"중지 키 '{stop_key}'는 특수 키 목록에서 제외됨")
+            
+            self.specific_key_combo.addItems(function_keys)
+        elif index == 3:  # 제어 키
+            self.specific_key_combo.addItems(["esc", "enter", "tab", "space", "backspace", "delete", "insert", "home", "end", "pageup", "pagedown"])
+        elif index == 4:  # 기타 특수 키
+            self.specific_key_combo.addItems(["printscreen", "scrolllock", "pause", "capslock", "numlock"])
+
+    def add_special_key_to_combo(self):
+        """
+        선택된 특수 키를 키 조합 텍스트에 추가
+        """
+        if self.specific_key_combo.count() > 0:
+            selected_key = self.specific_key_combo.currentText()
+            app_logger.debug(f"특수 키 추가: {selected_key}")
+            
+            current_text = self.key_combo_text.text()
+            if current_text:
+                # 이미 텍스트가 있으면 '+' 기호로 구분하여 추가
+                if current_text.endswith('+'):
+                    self.key_combo_text.setText(f"{current_text}{selected_key}")
+                else:
+                    self.key_combo_text.setText(f"{current_text}+{selected_key}")
+            else:
+                # 텍스트가 없으면 그냥 추가
+                self.key_combo_text.setText(selected_key)

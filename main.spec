@@ -1,4 +1,3 @@
-# main.spec
 # -*- mode: python ; coding: utf-8 -*-
 import re
 import os
@@ -21,15 +20,15 @@ a = Analysis(
         'core.actions', 'core.clipboard_manager', 'core.folder_monitor', 'core.macro_engine',
         'utils.config', 'utils.logger',
         'platform', 'pynput', 'pyperclip', 'pyautogui', 'logging', 'json',
-        'watchdog', 'watchdog.observers', 'watchdog.observers.api', 
-        'watchdog.observers.polling', 'watchdog.observers.read_directory_changes',
-        'watchdog.events', 'encodings.utf_8', 'encodings.cp949'
+        'watchdog.observers', 'watchdog.observers.polling', 
+        'watchdog.events'
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=['matplotlib', 'numpy', 'pandas', 'scipy', 'tkinter', 'PySide2', 'PyQt6', 'IPython', 'PIL',
-             'notebook', 'sphinx', 'docutils', 'pytest', 'unittest'],
+             'notebook', 'sphinx', 'docutils', 'pytest', 'unittest', 'pkg_resources', 
+             'email', 'html', 'http', 'urllib', 'xml', 'pydoc_data'],
     noarchive=False,
     optimize=2,
 )
@@ -50,6 +49,7 @@ qt5_excludes = [
     re.compile(r'PyQt5\.QtDesigner.*'),
     re.compile(r'PyQt5\.QtHelp.*'),
     re.compile(r'PyQt5\.QtMultimedia.*'),
+    re.compile(r'PyQt5\.QtNetwork.*'),  # 추가: 네트워크 기능
     re.compile(r'PyQt5\.QtOpenGL.*'),
     re.compile(r'PyQt5\.QtPositioning.*'),
     re.compile(r'PyQt5\.QtPrintSupport.*'),
@@ -58,6 +58,7 @@ qt5_excludes = [
     re.compile(r'PyQt5\.QtSensors.*'),
     re.compile(r'PyQt5\.QtSerialPort.*'),
     re.compile(r'PyQt5\.QtSql.*'),
+    re.compile(r'PyQt5\.QtSvg.*'),      # 추가: SVG 기능
     re.compile(r'PyQt5\.QtTest.*'),
     re.compile(r'PyQt5\.QtWebChannel.*'),
     re.compile(r'PyQt5\.QtWebEngine.*'),
@@ -85,17 +86,21 @@ a.datas = keep_only_ko_en_translations(a.datas)
 # LZMA 압축 사용
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher, name='pyz', compression='lzma')
 
-
+# 단일 파일 모드로 변경
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
     [],
-    exclude_binaries=True,
     name='main',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
+    upx_exclude=['vcruntime140.dll', 'python*.dll'],
+    runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -104,15 +109,14 @@ exe = EXE(
     entitlements_file=None,
 )
 
-collect = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='main',
-)
-
-
+# 폴더 모드로 유지하려면 아래 코드를 사용
+# collect = COLLECT(
+#     exe,
+#     a.binaries,
+#     a.zipfiles,
+#     a.datas,
+#     strip=False,
+#     upx=True,
+#     upx_exclude=[],
+#     name='main',
+# )

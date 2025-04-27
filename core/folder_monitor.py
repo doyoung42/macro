@@ -6,6 +6,7 @@ import os
 import time
 import threading
 import pyperclip
+from datetime import datetime
 from PyQt5.QtCore import QObject, pyqtSignal
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -70,11 +71,13 @@ class FolderMonitor(QObject):
         """
         폴더 모니터링 시작
         """
-        if self.monitoring or not self.folder_path or not os.path.exists(self.folder_path):
-            app_logger.warning("폴더 모니터링을 시작할 수 없음: 이미 모니터링 중이거나 폴더 경로가 유효하지 않음")
+        if not self.folder_path or not os.path.exists(self.folder_path):
+            app_logger.warning("폴더 모니터링을 시작할 수 없음: 폴더 경로가 유효하지 않음")
             return
         
-        # 클립보드 초기화는 하지 않음 (Ctrl+C에서 처리)
+        # 이미 실행 중인 경우 먼저 중지
+        if self.monitoring:
+            self.stop_monitoring()
         
         # 시작 시 폴더 목록 저장
         self.initial_folders = self._get_subfolders()
@@ -92,6 +95,7 @@ class FolderMonitor(QObject):
         self.observer.start()
         
         self.status_changed.emit(f"폴더 모니터링 시작됨: {self.folder_path}")
+
     
     def stop_monitoring(self):
         """
@@ -149,6 +153,10 @@ class FolderMonitor(QObject):
             return
         
         try:
+            # 클립보드 내용 캡처하기 전 잠시 대기 (복사 작업이 완료될 시간)
+            import time
+            time.sleep(0.5)  # 500ms 대기
+            
             # 클립보드 내용 가져오기
             clipboard_content = pyperclip.paste()
             
@@ -167,8 +175,6 @@ class FolderMonitor(QObject):
                     f.write(clipboard_content)
                 
                 app_logger.debug(f"저장된 파일 경로: {file_path}")
-                
-                # 클립보드는 비우지 않음 (Ctrl+C에서 처리)
                 
                 self.status_changed.emit(f"클립보드 내용이 새 폴더에 저장됨: {file_path}")
                 return True
