@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 
 # Distribution / packaging
-dist/
+dist/old
 build/
 *.egg-info/
 
@@ -46,7 +46,6 @@ config.local.json
 # Temporary files
 temp/
 logs/
-dist/
 
 # marge codes to text
 merge.py
