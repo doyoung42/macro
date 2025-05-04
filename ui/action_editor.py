@@ -393,7 +393,7 @@ class ActionEditorDialog(QDialog):
         QTimer.singleShot(2500, self.stop_capture_mode)
         
         # 사용자에게 안내 메시지 표시
-        QMessageBox.information(self, "위치 캡처", "2초 동안 마우스를 원하는 위치에 놓으세요.")
+        #QMessageBox.information(self, "위치 캡처", "2초 동안 마우스를 원하는 위치에 놓으세요.")
 
     
     def stop_capture_mode(self):
