@@ -47,6 +47,7 @@ config.local.json
 temp/
 logs/
 dist/
+build/
 
 # marge codes to text
 merge.py
